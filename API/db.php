@@ -1,6 +1,6 @@
 <?php
 // db.php
-$host = '127.0.0.1';
+$host = 'localhost';
 $db   = 'xeri_game';
 $user = 'root'; 
 $pass = '';     

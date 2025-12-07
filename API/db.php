@@ -1,9 +1,9 @@
 <?php
 // db.php
-$host = 'localhost';
+$host = '127.0.0.1';
 $db   = 'xeri_game';
-$user = 'root'; // Άλλαξέ το αν έχεις κωδικό
-$pass = '';     // Άλλαξέ το αν έχεις κωδικό
+$user = 'root'; 
+$pass = '';     
 $charset = 'utf8mb4';
 
 $dsn = "mysql:host=$host;dbname=$db;charset=$charset";

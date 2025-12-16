@@ -1,86 +1,138 @@
 <?php
-// play_card.php
 header('Content-Type: application/json');
 require 'db.php';
 
+// Λήψη δεδομένων JSON
 $input = json_decode(file_get_contents('php://input'), true);
 $game_id = $input['game_id'] ?? null;
 $card_id = $input['card_id'] ?? null;
 
 if (!$game_id || !$card_id) {
+    http_response_code(400);
     echo json_encode(['error' => 'Missing game_id or card_id']);
     exit;
 }
 
-// 1. Βρες το φύλλο που παίζεται
-$stmt = $pdo->prepare("SELECT * FROM game_cards WHERE id = ?");
-$stmt->execute([$card_id]);
-$played_card = $stmt->fetch();
+try {
+    $pdo->beginTransaction();
 
-// 2. Βρες το πάνω-πάνω φύλλο στο τραπέζι
-$stmt = $pdo->prepare("SELECT * FROM game_cards WHERE game_id = ? AND location = 'table' ORDER BY pile_order DESC LIMIT 1");
-$stmt->execute([$game_id]);
-$top_card = $stmt->fetch();
+    // 1. Έλεγχος Σειράς
+    $stmt = $pdo->prepare("SELECT turn_player, status FROM games WHERE id=?");
+    $stmt->execute([$game_id]);
+    $game = $stmt->fetch();
 
-// 3. Μέτρα πόσα φύλλα έχει το τραπέζι (για έλεγχο ξερής)
-$stmt = $pdo->prepare("SELECT COUNT(*) FROM game_cards WHERE game_id = ? AND location = 'table'");
-$stmt->execute([$game_id]);
-$table_count = $stmt->fetchColumn();
+    if ($game['status'] !== 'active') {
+        echo json_encode(['error' => 'Game ended']); exit;
+    }
 
-$action = "drop"; // 'drop' ή 'collect'
-$message = "";
-$xeri_points = 0;
+    // 2. Πληροφορίες Κάρτας που παίζεται
+    $stmt = $pdo->prepare("SELECT * FROM game_cards WHERE id=? AND game_id=?");
+    $stmt->execute([$card_id, $game_id]);
+    $played_card = $stmt->fetch();
 
-// ΛΟΓΙΚΗ ΠΑΙΧΝΙΔΙΟΥ
-if ($top_card) {
-    // Αν ταιριάζει ο αριθμός ή αν ρίξεις Βαλέ
-    if ($played_card['rank'] == $top_card['rank'] || $played_card['rank'] == 'J') {
-        $action = "collect";
-        
-        // Έλεγχος για ΞΕΡΗ
-        if ($table_count == 1) {
-            // Αν ρίξεις Βαλέ για να κάνεις ξερή -> 20 πόντοι
-            if ($played_card['rank'] == 'J') {
-                $xeri_points = 20;
-                $message = "ΞΕΡΗ με Βαλέ! (20 πόντοι)";
+    // Verification: Είναι όντως στο χέρι του παίκτη που έχει σειρά;
+    $expected_loc = 'p' . $game['turn_player'] . '_hand';
+    if (!$played_card || $played_card['location'] !== $expected_loc) {
+        echo json_encode(['error' => 'Not your card or wrong turn']); exit;
+    }
+
+    // 3. Πληροφορίες Τραπεζιού (Πάνω φύλλο)
+    $stmt = $pdo->prepare("SELECT * FROM game_cards WHERE game_id=? AND location='table' ORDER BY pile_order DESC LIMIT 1");
+    $stmt->execute([$game_id]);
+    $top_card = $stmt->fetch();
+
+    // Μέτρημα φύλλων στο τραπέζι (για Ξερή)
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM game_cards WHERE game_id=? AND location='table'");
+    $stmt->execute([$game_id]);
+    $table_count = $stmt->fetchColumn();
+
+    // --- LOGIC ---
+    $action = "drop";
+    $xeri_points = 0;
+    $message = "Card played";
+
+    if ($top_card) {
+        // Κανόνας: Ίδιο Rank ή Βαλές
+        if ($played_card['rank'] == $top_card['rank'] || $played_card['rank'] == 'J') {
+            $action = "collect";
+            
+            // Check Ξερή (μόνο αν δεν είναι Βαλές πάνω σε Βαλέ, συνήθως)
+            // Απλοποιημένος κανόνας: Αν υπάρχει μόνο 1 φύλλο κάτω -> Ξερή
+            if ($table_count == 1) {
+                $xeri_points = ($played_card['rank'] == 'J') ? 20 : 10;
+                $message = "XERI! ($xeri_points points)";
             } else {
-                // Απλή ξερή -> 10 πόντοι
-                $xeri_points = 10;
-                $message = "ΞΕΡΗ! (10 πόντοι)";
+                $message = "Collected!";
             }
-        } else {
-            $message = "Μάζεψες τα φύλλα!";
+        }
+    }
+
+    // --- EXECUTE ACTION ---
+    if ($action == "collect") {
+        $pile = 'p' . $game['turn_player'] . '_pile';
+        
+        // Μαζεύουμε το τραπέζι ΚΑΙ το φύλλο που ρίξαμε
+        $sql = "UPDATE game_cards SET location=?, pile_order=0 WHERE game_id=? AND (location='table' OR id=?)";
+        $pdo->prepare($sql)->execute([$pile, $game_id, $card_id]);
+
+        // Ενημέρωση Last Collector
+        $pdo->prepare("UPDATE games SET last_collector=? WHERE id=?")->execute([$game['turn_player'], $game_id]);
+
+        // Πόντοι Ξερής
+        if ($xeri_points > 0) {
+            $score_col = 'p' . $game['turn_player'] . '_score';
+            $pdo->prepare("UPDATE games SET $score_col = $score_col + ? WHERE id=?")->execute([$xeri_points, $game_id]);
         }
     } else {
-        $message = "Το φύλλο παίχτηκε.";
+        // Drop: Το φύλλο πάει στο τραπέζι
+        $new_order = ($top_card['pile_order'] ?? 0) + 1;
+        $pdo->prepare("UPDATE game_cards SET location='table', pile_order=? WHERE id=?")->execute([$new_order, $card_id]);
     }
-} else {
-    $message = "Το φύλλο παίχτηκε σε άδειο τραπέζι.";
-}
 
-// ΕΚΤΕΛΕΣΗ ΑΛΛΑΓΩΝ ΣΤΗ ΒΑΣΗ
-if ($action == "collect") {
-    // 1. Όλα τα φύλλα του τραπεζιού + το δικό σου πάνε στη στοίβα του P1
-    $sql = "UPDATE game_cards SET location = 'p1_pile', pile_order = 0 WHERE game_id = ? AND (location = 'table' OR id = ?)";
-    $pdo->prepare($sql)->execute([$game_id, $card_id]);
+    // 4. Αλλαγή Σειράς
+    $next_player = ($game['turn_player'] == 1) ? 2 : 1;
+    $pdo->prepare("UPDATE games SET turn_player=? WHERE id=?")->execute([$next_player, $game_id]);
 
-    // 2. Αν έγινε ξερή, ενημέρωσε το σκορ
-    if ($xeri_points > 0) {
-        $pdo->prepare("UPDATE games SET p1_score = p1_score + ? WHERE id = ?")->execute([$xeri_points, $game_id]);
+    // 5. ΕΛΕΓΧΟΣ ΓΙΑ ΝΕΟ ΜΟΙΡΑΣΜΑ (Redeal)
+    // Ελέγχουμε αν άδειασαν τα χέρια ΚΑΙ των δύο
+    $stmt = $pdo->prepare("SELECT COUNT(*) FROM game_cards WHERE game_id=? AND location IN ('p1_hand', 'p2_hand')");
+    $stmt->execute([$game_id]);
+    $hands_total = $stmt->fetchColumn();
+
+    if ($hands_total == 0) {
+        // Ελέγχουμε αν έχει φύλλα η τράπουλα
+        $stmt = $pdo->prepare("SELECT id FROM game_cards WHERE game_id=? AND location='deck' LIMIT 12");
+        $stmt->execute([$game_id]);
+        $deck_cards = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        if (count($deck_cards) > 0) {
+            // Μοίρασμα
+            foreach ($deck_cards as $idx => $cid) {
+                $dest = ($idx < 6) ? 'p1_hand' : 'p2_hand';
+                $pdo->prepare("UPDATE game_cards SET location=? WHERE id=?")->execute([$dest, $cid]);
+            }
+            $message .= " (Redealed)";
+        } else {
+            // ΤΕΛΟΣ ΠΑΙΧΝΙΔΙΟΥ
+            // Ό,τι έμεινε στο τραπέζι πάει στον last_collector
+            $stmt = $pdo->prepare("SELECT last_collector FROM games WHERE id=?");
+            $stmt->execute([$game_id]);
+            $last_col = $stmt->fetchColumn();
+            
+            $final_pile = 'p' . $last_col . '_pile';
+            $pdo->prepare("UPDATE game_cards SET location=? WHERE game_id=? AND location='table'")->execute([$final_pile, $game_id]);
+            
+            $pdo->prepare("UPDATE games SET status='ended' WHERE id=?")->execute([$game_id]);
+            $message .= " (Game Over)";
+        }
     }
-} else {
-    // Το φύλλο πάει στο τραπέζι πάνω από τα άλλα
-    $new_order = ($top_card['pile_order'] ?? 0) + 1;
-    $pdo->prepare("UPDATE game_cards SET location = 'table', pile_order = ? WHERE id = ?")->execute([$new_order, $card_id]);
+
+    $pdo->commit();
+    echo json_encode(['status' => 'success', 'action' => $action, 'message' => $message]);
+
+} catch (Exception $e) {
+    if ($pdo->inTransaction()) $pdo->rollBack();
+    http_response_code(500);
+    echo json_encode(['error' => $e->getMessage()]);
 }
-
-// Αλλαγή σειράς (Από 1 σε 2, από 2 σε 1)
-$pdo->prepare("UPDATE games SET turn_player = IF(turn_player=1, 2, 1) WHERE id = ?")->execute([$game_id]);
-
-echo json_encode([
-    'status' => 'success',
-    'action_type' => $action,
-    'message' => $message,
-    'xeri_points' => $xeri_points
-]);
 ?>

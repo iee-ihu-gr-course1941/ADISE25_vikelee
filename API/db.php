@@ -6,6 +6,8 @@ $pass = 'Kelemao1!';
 $port = '3307'; // <--- Εδώ ορίσαμε τη θύρα
 $charset = 'utf8mb4';
 
+// kaksdaklsdkasldk
+
 // Προσθέσαμε το port=$port μέσα στο string σύνδεσης
 $dsn = "mysql:host=$host;port=$port;dbname=$db;charset=$charset";
 

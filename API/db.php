@@ -1,9 +1,9 @@
 <?php
 $host = 'localhost';
 $db   = 'xeri_db';
-$user = 'iee2021194';
-$pass = 'Qwerty123456';
-$port = '3309'; 
+$user = 'iee2021066';
+$pass = 'Kelemao1!';
+$port = '3307'; 
 $charset = 'utf8mb4';
 
 

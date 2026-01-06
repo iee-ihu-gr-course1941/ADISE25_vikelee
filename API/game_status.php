@@ -1,67 +1,63 @@
 <?php
-ob_start();
+// Κλείνουμε τυχόν output buffers για να μην χαλάσει το JSON
+while (ob_get_level()) ob_end_clean();
 header('Content-Type: application/json');
+
 require 'db.php';
-$response = [];
 
-try {
-    $gid = $_GET['game_id'] ?? null;
-    if (!$gid) throw new Exception("No ID");
+$gid = $_GET['game_id'] ?? null;
+if (!$gid) { echo json_encode(['status'=>'error', 'message'=>'No ID']); exit; }
 
-    $game = $pdo->query("SELECT * FROM games WHERE id=$gid")->fetch();
-    if (!$game) throw new Exception("Game not found");
+// Χρησιμοποιούμε απλό SELECT (χωρίς κλείδωμα) για ταχύτητα
+$game = $pdo->query("SELECT * FROM games WHERE id=$gid")->fetch(PDO::FETCH_ASSOC);
+if (!$game) { echo json_encode(['status'=>'error', 'message'=>'Game not found']); exit; }
 
-    $cards = $pdo->query("SELECT * FROM game_cards WHERE game_id=$gid ORDER BY pile_order ASC")->fetchAll();
+$cards = $pdo->query("SELECT * FROM game_cards WHERE game_id=$gid")->fetchAll(PDO::FETCH_ASSOC);
 
-    $p1_hand = []; 
-    $p2_hand_count = 0;
-    $table_cards = [];
-    
-    // Αρχικοί πόντοι από τα bonus Ξερής (που αποθηκεύονται στο games table)
-    $p1_score = $game['p1_score'];
-    $p2_score = $game['p2_score'];
-    
-    $p1_captured = 0;
-    $p2_captured = 0;
-    $p1_xeri_cards = [];
-    $p2_xeri_cards = [];
+$p1_hand = []; $p2_hand = []; $table = [];
+$p1_pile = 0; $p2_pile = 0;
+$p1_xeres = []; $p2_xeres = [];
 
-    foreach ($cards as $c) {
-        if ($c['location'] === 'p1_hand') $p1_hand[] = $c;
-        elseif ($c['location'] === 'p2_hand') $p2_hand_count++;
-        elseif ($c['location'] === 'table') $table_cards[] = $c;
-        
-        // P1 PILE
-        elseif ($c['location'] === 'p1_pile') {
-            $p1_score += $c['points']; // Προσθέτουμε πόντους κάρτας
-            $p1_captured++;
-            if ($c['is_xeri']) $p1_xeri_cards[] = $c;
-        }
-        // P2 PILE
-        elseif ($c['location'] === 'p2_pile') {
-            $p2_score += $c['points'];
-            $p2_captured++;
-            if ($c['is_xeri']) $p2_xeri_cards[] = $c;
-        }
+foreach ($cards as $c) {
+    if ($c['location'] === 'p1_hand') $p1_hand[] = $c;
+    elseif ($c['location'] === 'p2_hand') $p2_hand[] = $c;
+    elseif ($c['location'] === 'table') $table[] = $c;
+    elseif ($c['location'] === 'p1_pile') { 
+        $p1_pile++;
+        if ($c['is_xeri']) $p1_xeres[] = $c;
     }
-
-    $response = [
-        'status' => 'success',
-        'turn' => $game['turn_player'],
-        'table_cards' => $table_cards,
-        'p1_hand' => $p1_hand,
-        'p2_hand_count' => $p2_hand_count,
-        'scores' => [
-            'p1' => $p1_score, 'p2' => $p2_score,
-            'p1_xeres' => $game['p1_xeres'], 'p2_xeres' => $game['p2_xeres']
-        ],
-        'captured' => ['p1' => $p1_captured, 'p2' => $p2_captured],
-        'xeres_cards' => ['p1' => $p1_xeri_cards, 'p2' => $p2_xeri_cards]
-    ];
-} catch (Exception $e) {
-    $response = ['status'=>'error', 'error'=>$e->getMessage()];
+    elseif ($c['location'] === 'p2_pile') { 
+        $p2_pile++;
+        if ($c['is_xeri']) $p2_xeres[] = $c;
+    }
 }
 
-if(ob_get_length()) ob_clean();
+// Ταξινόμηση τραπεζιού
+usort($table, function($a, $b) { return $a['pile_order'] - $b['pile_order']; });
+
+$response = [
+    'status' => 'success',
+    'game_status' => $game['status'],
+    'turn' => (int)$game['turn_player'],
+    'last_action' => $game['last_action'],
+    
+    // Arrays (ποτέ null)
+    'p1_hand' => $p1_hand,
+    'p2_hand' => $p2_hand,
+    'table_cards' => $table,
+    
+    'captured' => ['p1' => $p1_pile, 'p2' => $p2_pile],
+    'xeres_cards' => ['p1' => $p1_xeres, 'p2' => $p2_xeres],
+    
+    // Σκορ (Force integers)
+    'scores' => [
+        'p1' => (int)$game['p1_score'],
+        'p2' => (int)$game['p2_score'],
+        'p1_xeres' => (int)$game['p1_xeres'],
+        'p2_xeres' => (int)$game['p2_xeres']
+    ]
+];
+
 echo json_encode($response);
 exit;
+?>

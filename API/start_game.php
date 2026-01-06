@@ -7,7 +7,7 @@ try {
     $pdo->beginTransaction();
 
     $p1_token = bin2hex(random_bytes(16));
-    $stmt = $pdo->prepare("INSERT INTO games (status, turn_player, p1_token) VALUES ('active', 1, ?)");
+    $stmt = $pdo->prepare("INSERT INTO games (status, turn_player, p1_token) VALUES ('waiting', 1, ?)");
     $stmt->execute([$p1_token]);
     $game_id = $pdo->lastInsertId();
 

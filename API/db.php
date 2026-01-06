@@ -1,14 +1,13 @@
 <?php
 $host = 'localhost';
 $db   = 'xeri_db';
-$user = 'iee2021066';
-$pass = 'Kelemao1!';
-$port = '3307'; // <--- Εδώ ορίσαμε τη θύρα
+$user = 'iee2021194';
+$pass = 'Qwerty123456';
+$port = '3309'; 
 $charset = 'utf8mb4';
 
-// kaksdaklsdkasldk
 
-// Προσθέσαμε το port=$port μέσα στο string σύνδεσης
+
 $dsn = "mysql:host=$host;port=$port;dbname=$db;charset=$charset";
 
 $options = [

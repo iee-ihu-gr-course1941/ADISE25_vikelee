@@ -1,167 +1,126 @@
 <?php
+ob_start();
 header('Content-Type: application/json');
 require 'db.php';
-
-// Λήψη δεδομένων JSON
-$input = json_decode(file_get_contents('php://input'), true);
-$game_id = $input['game_id'] ?? null;
-$card_id = $input['card_id'] ?? null;
-
-if (!$game_id || !$card_id) {
-    http_response_code(400);
-    echo json_encode(['error' => 'Missing game_id or card_id']);
-    exit;
-}
+$response = [];
 
 try {
+    $input = json_decode(file_get_contents('php://input'), true);
+    if (empty($input['game_id']) || empty($input['card_id'])) throw new Exception("Error");
+    
+    $gid = $input['game_id'];
+    $cid = $input['card_id'];
+
     $pdo->beginTransaction();
 
-    // 1. Έλεγχος Σειράς και Status Παιχνιδιού
-    $stmt = $pdo->prepare("SELECT turn_player, status FROM games WHERE id=?");
-    $stmt->execute([$game_id]);
-    $game = $stmt->fetch();
+    $game = $pdo->query("SELECT * FROM games WHERE id=$gid FOR UPDATE")->fetch();
+    if (!$game || $game['status'] !== 'active') throw new Exception("Game inactive");
 
-    // ΔΙΟΡΘΩΣΗ: Έλεγχος αν βρέθηκε το παιχνίδι (αν δεν βρεθεί, ο $game είναι false)
-    if (!$game) {
-        http_response_code(404);
-        echo json_encode(['error' => 'Game not found']);
-        exit;
-    }
+    $turn = $game['turn_player'];
+    $hand_col = ($turn == 1) ? 'p1_hand' : 'p2_hand';
+    $pile_col = ($turn == 1) ? 'p1_pile' : 'p2_pile';
+    $score_col = ($turn == 1) ? 'p1_score' : 'p2_score';
+    $xeri_col = ($turn == 1) ? 'p1_xeres' : 'p2_xeres';
 
-    if ($game['status'] !== 'active') {
-        echo json_encode(['error' => 'Game ended']); 
-        exit;
-    }
+    // Βρίσκουμε την κάρτα που παίζεται
+    $stmt = $pdo->prepare("SELECT * FROM game_cards WHERE id=? AND game_id=? AND location=?");
+    $stmt->execute([$cid, $gid, $hand_col]);
+    $card = $stmt->fetch();
+    if (!$card) throw new Exception("Card not found");
 
-    // 2. Πληροφορίες Κάρτας που παίζεται
-    $stmt = $pdo->prepare("SELECT * FROM game_cards WHERE id=? AND game_id=?");
-    $stmt->execute([$card_id, $game_id]);
-    $played_card = $stmt->fetch();
+    // Βρίσκουμε τι υπάρχει στο τραπέζι
+    $table_cards = $pdo->query("SELECT * FROM game_cards WHERE game_id=$gid AND location='table' ORDER BY pile_order ASC")->fetchAll();
+    $top_card = end($table_cards);
 
-    // Verification: Είναι όντως στο χέρι του παίκτη που έχει σειρά;
-    $expected_loc = 'p' . $game['turn_player'] . '_hand';
-    if (!$played_card || $played_card['location'] !== $expected_loc) {
-        echo json_encode(['error' => 'Not your card or wrong turn']); exit;
-    }
-
-    // 3. Πληροφορίες Τραπεζιού (Πάνω φύλλο)
-    $stmt = $pdo->prepare("SELECT * FROM game_cards WHERE game_id=? AND location='table' ORDER BY pile_order DESC LIMIT 1");
-    $stmt->execute([$game_id]);
-    $top_card = $stmt->fetch();
-
-    // Μέτρημα φύλλων στο τραπέζι (για Ξερή)
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM game_cards WHERE game_id=? AND location='table'");
-    $stmt->execute([$game_id]);
-    $table_count = $stmt->fetchColumn();
-
-    // --- LOGIC ---
-    $action = "drop";
-    $xeri_points = 0;
-    $message = "Card played";
+    $collected = false;
+    $is_xeri = false;
+    $points = 0;
     
-    // Ορίζουμε τη μεταβλητή για το αν το φύλλο που παίχτηκε είναι Βαλές
-    $is_jack = ($played_card['rank'] == 'J');
-
+    // --- ΛΟΓΙΚΗ ΜΑΖΕΜΑΤΟΣ ---
     if ($top_card) {
-        $ranks_match = ($played_card['rank'] == $top_card['rank']);
-
-        // 1. Ελέγχουμε αν υπάρχει δράση μαζέματος (ίσο Rank Ή Βαλές)
-        if ($ranks_match || $is_jack) {
-            $action = "collect";
-
-            // 2. ΕΛΕΓΧΟΣ ΞΕΡΗΣ
-            // Συμβαίνει μόνο αν $table_count == 1
-            if ($table_count == 1) {
-                
-                // Υπολογισμός πόντων: 20 για Βαλέ, 10 για οποιοδήποτε άλλο ταίριασμα
-                $xeri_points = $is_jack ? 20 : 10;
-                $message = "XERI! ($xeri_points points)";
-                
-            } else {
-                // Απλό μάζεμα (όταν $table_count > 1)
-                $message = "Collected!";
+        if ($card['rank'] === $top_card['rank'] || $card['rank'] === 'J') {
+            $collected = true;
+            if (count($table_cards) === 1 && $card['rank'] === $top_card['rank']) {
+                $is_xeri = true;
             }
         }
     }
 
-    // --- EXECUTE ACTION ---
-    if ($action == "collect") {
-        $pile = 'p' . $game['turn_player'] . '_pile';
+    // --- ΕΚΤΕΛΕΣΗ ΚΙΝΗΣΗΣ ---
+    if ($collected) {
+        $ids_to_collect = [$cid];
+        foreach ($table_cards as $tc) {
+            $ids_to_collect[] = $tc['id'];
+            $points += $tc['points'];
+        }
+        $points += $card['points'];
         
-        // Μαζεύουμε το τραπέζι ΚΑΙ το φύλλο που ρίξαμε
-        $sql = "UPDATE game_cards SET location=?, pile_order=0 WHERE game_id=? AND (location='table' OR id=?)";
-        $pdo->prepare($sql)->execute([$pile, $game_id, $card_id]);
-
-        // Ενημέρωση Last Collector
-        $pdo->prepare("UPDATE games SET last_collector=? WHERE id=?")->execute([$game['turn_player'], $game_id]);
-
-        // Πόντοι Ξερής
-        if ($xeri_points > 0) {
-            $score_col = 'p' . $game['turn_player'] . '_score';
-            // ΕΔΩ ΠΡΟΣΤΙΘΕΝΤΑΙ ΟΙ ΠΟΝΤΟΙ ΣΤΗ ΒΑΣΗ
-            $pdo->prepare("UPDATE games SET $score_col = $score_col + ? WHERE id=?")->execute([$xeri_points, $game_id]);
+        if ($is_xeri) {
+            $points += 10;
+            if ($card['rank'] === 'J') $points += 10;
+            $pdo->prepare("UPDATE game_cards SET is_xeri=1 WHERE id=?")->execute([$cid]);
+            $pdo->query("UPDATE games SET $xeri_col = $xeri_col + 1 WHERE id=$gid");
         }
+
+        $in_str = str_repeat('?,', count($ids_to_collect) - 1) . '?';
+        $sql = "UPDATE game_cards SET location=?, pile_order=0 WHERE id IN ($in_str)";
+        $pdo->prepare($sql)->execute(array_merge([$pile_col], $ids_to_collect));
+
+        $pdo->prepare("UPDATE games SET $score_col = $score_col + ? WHERE id=?")->execute([$points, $gid]);
+
+        $code = $is_xeri ? "XERI" : "CAPTURE";
+        $action_msg = $code . ":" . $card['rank'] . $card['suit']; 
+        $pdo->prepare("UPDATE games SET last_action=? WHERE id=?")->execute([$action_msg, $gid]);
+
     } else {
-        // Drop: Το φύλλο πάει στο τραπέζι
-        $new_order = ($top_card['pile_order'] ?? 0) + 1;
-        $pdo->prepare("UPDATE game_cards SET location='table', pile_order=? WHERE id=?")->execute([$new_order, $card_id]);
+        $new_order = count($table_cards) + 1;
+        $pdo->prepare("UPDATE game_cards SET location='table', pile_order=? WHERE id=?")->execute([$new_order, $cid]);
+        
+        $action_msg = "PLAY:" . $card['rank'] . $card['suit'];
+        $pdo->prepare("UPDATE games SET last_action=? WHERE id=?")->execute([$action_msg, $gid]);
     }
 
-    // 4. Αλλαγή Σειράς
-    $next_player = ($game['turn_player'] == 1) ? 2 : 1;
-    $pdo->prepare("UPDATE games SET turn_player=? WHERE id=?")->execute([$next_player, $game_id]);
+    // --- ΑΛΛΑΓΗ ΣΕΙΡΑΣ ---
+    $next_turn = ($turn == 1) ? 2 : 1;
+    $pdo->prepare("UPDATE games SET turn_player=? WHERE id=?")->execute([$next_turn, $gid]);
 
-    // 5. ΕΛΕΓΧΟΣ ΓΙΑ ΝΕΟ ΜΟΙΡΑΣΜΑ (Redeal)
-    $stmt = $pdo->prepare("SELECT COUNT(*) FROM game_cards WHERE game_id=? AND location IN ('p1_hand', 'p2_hand')");
-    $stmt->execute([$game_id]);
-    $hands_total = $stmt->fetchColumn();
+    // --- ΝΕΟ: ΕΛΕΓΧΟΣ ΓΙΑ ΞΑΝΑ-ΜΟΙΡΑΣΜΑ (RE-DEAL) ---
+    // Μετράμε πόσα φύλλα έχουν μείνει στα χέρια των παικτών
+    $cards_in_hands = $pdo->query("SELECT count(*) FROM game_cards WHERE game_id=$gid AND location IN ('p1_hand', 'p2_hand')")->fetchColumn();
 
-    if ($hands_total == 0) {
-        // Ελέγχουμε αν έχει φύλλα η τράπουλα
-        $stmt = $pdo->prepare("SELECT id FROM game_cards WHERE game_id=? AND location='deck' LIMIT 12");
-        $stmt->execute([$game_id]);
-        $deck_cards = $stmt->fetchAll(PDO::FETCH_COLUMN);
+    // Αν τα χέρια άδειασαν (είναι 0), πρέπει να μοιράσουμε από την τράπουλα (αν έχει φύλλα)
+    if ($cards_in_hands == 0) {
+        // Παίρνουμε τα επόμενα 12 φύλλα από την τράπουλα
+        $deck_cards = $pdo->query("SELECT id FROM game_cards WHERE game_id=$gid AND location='deck' ORDER BY pile_order ASC LIMIT 12")->fetchAll(PDO::FETCH_COLUMN);
 
-        if (count($deck_cards) > 0) {
-            // Μοίρασμα
-            foreach ($deck_cards as $idx => $cid) {
-                $dest = ($idx < 6) ? 'p1_hand' : 'p2_hand';
-                $pdo->prepare("UPDATE game_cards SET location=? WHERE id=?")->execute([$dest, $cid]);
+        if ($deck_cards) {
+            foreach ($deck_cards as $index => $card_id) {
+                // Τα πρώτα 6 στον P1, τα επόμενα 6 στον P2
+                $new_loc = ($index < 6) ? 'p1_hand' : 'p2_hand';
+                $pdo->prepare("UPDATE game_cards SET location=? WHERE id=?")->execute([$new_loc, $card_id]);
             }
-            $message .= " (Redealed)";
-        } else {
-            // ΤΕΛΟΣ ΠΑΙΧΝΙΔΙΟΥ
-            $stmt = $pdo->prepare("SELECT last_collector FROM games WHERE id=?");
-            $stmt->execute([$game_id]);
-            $last_col = $stmt->fetchColumn();
-            
-            $final_pile = 'p' . $last_col . '_pile';
-            $pdo->prepare("UPDATE game_cards SET location=? WHERE game_id=? AND location='table'")->execute([$final_pile, $game_id]);
-            
-            $pdo->prepare("UPDATE games SET status='ended' WHERE id=?")->execute([$game_id]);
-            $message .= " (Game Over)";
         }
     }
 
-    // Ανάκτηση των νέων σκορ πριν το commit (για το frontend)
-    $stmt = $pdo->prepare("SELECT p1_score, p2_score FROM games WHERE id=?");
-    $stmt->execute([$game_id]);
-    $current_scores = $stmt->fetch(PDO::FETCH_ASSOC);
+    // --- ΕΛΕΓΧΟΣ ΤΕΛΟΥΣ ΠΑΙΧΝΙΔΙΟΥ ---
+    // Το παιχνίδι τελειώνει όταν δεν υπάρχουν φύλλα ούτε στην τράπουλα, ούτε στα χέρια
+    $remaining = $pdo->query("SELECT count(*) FROM game_cards WHERE location IN ('deck','p1_hand','p2_hand') AND game_id=$gid")->fetchColumn();
     
+    if ($remaining == 0) {
+        // ΤΕΛΕΥΤΑΙΟ ΜΑΖΕΜΑ: Όποιος έκανε την τελευταία μπάζα, παίρνει ό,τι έμεινε κάτω
+        // (Αυτή είναι μια λεπτομέρεια της Ξερής, αν θες την ενεργοποιούμε. Προς το παρόν απλά τελειώνει).
+        $pdo->query("UPDATE games SET status='ended' WHERE id=$gid");
+    }
+
     $pdo->commit();
-    
-    // Επιστροφή των σκορ στο JSON response
-    echo json_encode([
-        'status' => 'success', 
-        'action' => $action, 
-        'message' => $message,
-        'scores' => $current_scores 
-    ]);
+    $response = ['status'=>'success'];
 
 } catch (Exception $e) {
     if ($pdo->inTransaction()) $pdo->rollBack();
-    http_response_code(500);
-    echo json_encode(['error' => $e->getMessage()]);
+    $response = ['status'=>'error', 'error'=>$e->getMessage()];
 }
 
+if(ob_get_length()) ob_clean();
+echo json_encode($response);
 exit;
+?>

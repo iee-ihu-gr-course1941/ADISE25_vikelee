@@ -2,8 +2,8 @@
 <html lang="el">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ξερή - Online Game</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Ξερή - Online</title>
     <link rel="stylesheet" href="style.css">
     <script src="script.js" defer></script>
 </head>
@@ -17,58 +17,73 @@
         <input type="text" id="username-input" placeholder="Το όνομά σου..." autocomplete="off">
         <br><br>
         <button id="btn-login" class="action-btn">Είσοδος</button>
-        <p id="login-msg" style="color: #ff5252; font-weight: bold; margin-top: 10px;"></p>
     </div>
 
-    <div id="game-dashboard" style="display: none;">
+    <div id="game-dashboard" style="display: none; flex-direction: column; height: 100%;">
         
-        <div class="header">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <span>Παίκτης: <b id="display-username" style="color: gold; font-size: 1.2em;"></b></span>
-                <span id="status-message" style="font-size: 1.2em; font-weight: bold;">Αναμονή...</span>
+        <div class="header-info">
+            <div>
+                Παίκτης: <b id="display-username" style="color: gold;"></b>
+                <span id="game-id-container" style="display:none; margin-left: 10px;">
+                    | ID: <b id="display-game-id" style="color: lime;"></b>
+                </span>
             </div>
-            
-            <hr style="border-color: rgba(255,255,255,0.2);">
-            
-            <div style="margin-top: 10px;">
-                <button id="btn-create" class="action-btn">Δημιουργία (P1)</button>
-                <span style="margin: 0 10px;">ή</span>
-                <input type="text" id="join-id" placeholder="Game ID" style="width: 80px;">
-                <button id="btn-join" class="action-btn" style="background-color: #2196F3;">Σύνδεση (P2)</button>
-            </div>
+            <button id="btn-logout" class="action-btn" style="padding: 4px 10px; font-size: 0.8em; background:#d32f2f;">X</button>
         </div>
 
-        <div class="player-area relative">
-            <div class="stats-box enemy-stats">
-                Score: <span id="score-p2">0</span> | Ξερές: <span id="xeres-p2">0</span>
+        <div id="lobby-controls" class="panel" style="margin-top: 40px;">
+            <h3>Επιλογές Παιχνιδιού</h3>
+            
+            <button id="btn-create" class="action-btn" style="display: block; margin: 0 auto; width: 200px;">
+                Δημιουργία Νέου (P1)
+            </button>
+
+            <div style="margin: 20px 0; font-weight: bold; color: #ccc;">— Ή —</div>
+            
+            <input type="text" id="join-id" placeholder="Game ID" style="display: block; margin: 0 auto 15px auto; width: 200px;">
+            
+            <button id="btn-join" class="action-btn" style="background:#2196F3; display: block; margin: 0 auto; width: 200px;">
+                Σύνδεση (P2)
+            </button>
+        </div>
+
+        <div id="waiting-screen">
+            <h2>⏳ Αναμονή για Αντίπαλο...</h2>
+            <p>Δώσε το Game ID στον φίλο σου:</p>
+            <h1 id="waiting-id" style="color: lime; font-size: 3em; margin: 10px;"></h1>
+            <p>Το παιχνίδι θα ξεκινήσει αυτόματα.</p>
+        </div>
+
+        <div id="game-area" style="display:none;">
+            
+            <div class="player-area">
+                <div class="stats-box enemy-stats">
+                    Score: <span id="score-p2">0</span> | Ξερές: <span id="xeres-p2" style="color:cyan">0</span>
+                </div>
+                <div id="p2-pile" class="captured-pile enemy-pos"></div>
+                <div id="p2-xeres-list" class="xeri-list enemy-pos"></div>
+                <div id="enemy-hand" class="hand"></div>
             </div>
-            
-            <div id="p2-pile" class="captured-pile enemy-pos"></div>
-            
-            <div id="p2-xeres-list" class="xeri-list enemy-pos"></div>
-            
-            <div id="enemy-hand" class="hand"></div>
-        </div>
 
-        <div class="table-area">
-            <div id="table-pile" style="position: relative; width: 100%; height: 100%; display: flex; justify-content: center; align-items: center;"></div>
-        </div>
-
-        <div class="player-area relative">
-            <div class="stats-box my-stats">
-                Score: <span id="score-p1">0</span> | Ξερές: <span id="xeres-p1">0</span>
+            <div class="table-area">
+                <div id="table-pile" style="position: relative; width: 100%; height: 100%;"></div>
+                
+                <div id="ghost-card"></div>
             </div>
-            
-            <div id="p1-pile" class="captured-pile my-pos"></div>
-            
-            <div id="p1-xeres-list" class="xeri-list my-pos"></div>
-            
-            <div id="my-hand" class="hand"></div>
-        </div>
 
+            <div id="status-message"></div>
+
+            <div class="player-area">
+                <div class="stats-box my-stats">
+                    Score: <span id="score-p1">0</span> | Ξερές: <span id="xeres-p1" style="color:cyan">0</span>
+                </div>
+                <div id="p1-pile" class="captured-pile my-pos"></div>
+                <div id="p1-xeres-list" class="xeri-list my-pos"></div>
+                <div id="my-hand" class="hand"></div>
+            </div>
+
+        </div> 
     </div>
-
 </div>
-
 </body>
 </html>

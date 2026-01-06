@@ -1,28 +1,44 @@
 document.addEventListener("DOMContentLoaded", () => {
-    let state = { username: null, token: null, gameId: null, role: null };
+    let state = { 
+        username: null, token: null, gameId: null, role: null, 
+        lastActionStr: "",
+        cache: { hand: "", enemy: "", table: "", xeriP1: "", xeriP2: "", pileP1: -1, pileP2: -1, turn: -1 }
+    };
     let timer = null;
+    let gameEndedHandled = false;
 
+    // Στοιχεία HTML
+    // ΠΡΟΣΟΧΗ: scP1 είναι το ΚΑΤΩ κουτί (Εγώ), scP2 είναι το ΠΑΝΩ κουτί (Αντίπαλος)
     const els = {
         loginScreen: document.getElementById('login-screen'),
         gameDash: document.getElementById('game-dashboard'),
+        lobbyControls: document.getElementById('lobby-controls'),
+        gameArea: document.getElementById('game-area'),
+        waitingScreen: document.getElementById('waiting-screen'),
+        waitingId: document.getElementById('waiting-id'),
         username: document.getElementById('username-input'),
         loginBtn: document.getElementById('btn-login'),
-        loginMsg: document.getElementById('login-msg'),
-        displayUser: document.getElementById('display-username'),
         createBtn: document.getElementById('btn-create'),
         joinBtn: document.getElementById('btn-join'),
         joinInput: document.getElementById('join-id'),
+        displayUser: document.getElementById('display-username'),
         statusMsg: document.getElementById('status-message'),
+        ghostCard: document.getElementById('ghost-card'),
         myHand: document.getElementById('my-hand'),
         enemyHand: document.getElementById('enemy-hand'),
         table: document.getElementById('table-pile'),
-        p1Pile: document.getElementById('p1-pile'),
-        p2Pile: document.getElementById('p2-pile'),
-        p1Xeri: document.getElementById('p1-xeres-list'),
-        p2Xeri: document.getElementById('p2-xeres-list'),
-        statsP1: { sc: document.getElementById('score-p1'), xr: document.getElementById('xeres-p1') },
-        statsP2: { sc: document.getElementById('score-p2'), xr: document.getElementById('xeres-p2') }
+        pileBottom: document.getElementById('p1-pile'), 
+        pileTop: document.getElementById('p2-pile'),
+        xeriBottom: document.getElementById('p1-xeres-list'),
+        xeriTop: document.getElementById('p2-xeres-list'),
+        scP1: document.getElementById('score-p1'), xrP1: document.getElementById('xeres-p1'),
+        scP2: document.getElementById('score-p2'), xrP2: document.getElementById('xeres-p2')
     };
+
+    function getCardValue(rank) {
+        const map = { 'K':13, 'Q':12, 'J':11, '10':10, '9':9, '8':8, '7':7, '6':6, '5':5, '4':4, '3':3, '2':2, 'A':1 };
+        return map[rank] || 0;
+    }
 
     async function api(url, method='GET', data=null) {
         try {
@@ -30,142 +46,229 @@ document.addEventListener("DOMContentLoaded", () => {
             if(data) opts.body = JSON.stringify(data);
             const res = await fetch(url, opts);
             const txt = await res.text();
-            const s = txt.indexOf('{'), e = txt.lastIndexOf('}');
-            if(s !== -1 && e !== -1) return JSON.parse(txt.substring(s, e+1));
-            throw new Error(txt);
-        } catch(err) {
-            console.error(err);
-            return {status:'error', error:err.message};
-        }
+            try { return JSON.parse(txt); } catch(e) { console.error("JSON Error:", txt); return {status:'error'}; }
+        } catch(err) { return {status:'error', error:err.message}; }
     }
 
     els.loginBtn.onclick = async () => {
         const u = els.username.value.trim();
-        if(!u) return alert('Όνομα;');
+        if(!u) return alert('Βάλε όνομα');
         const d = await api('API/login.php', 'POST', {username:u});
         if(d.status === 'success') {
-            state.username = d.username;
-            state.token = d.token;
+            state.username = d.username; state.token = d.token;
             els.displayUser.textContent = d.username;
             els.loginScreen.style.display = 'none';
-            els.gameDash.style.display = 'block';
-        } else els.loginMsg.textContent = d.error;
+            els.gameDash.style.display = 'flex';
+        } else alert(d.error);
     };
 
     els.createBtn.onclick = async () => {
         const d = await api('API/start_game.php', 'POST', {token:state.token});
-        if(d.status === 'success') {
-            state.gameId = d.game_id;
-            state.role = 'P1';
-            els.statusMsg.innerHTML = `Game ID: <b style="color:gold">${d.game_id}</b>`;
-            startLoop();
-        }
+        if(d.status === 'success') setupGame(d.game_id, 'P1');
     };
 
     els.joinBtn.onclick = async () => {
         const id = els.joinInput.value.trim();
+        if(!id) return alert("Γράψε ένα Game ID");
         const d = await api('API/join_game.php', 'POST', {game_id:id});
         if(d.status === 'success') {
-            state.gameId = d.game_id;
-            state.role = 'P2';
-            els.statusMsg.textContent = "Συνδέθηκες!";
-            startLoop();
-        } else alert(d.error);
+            setupGame(d.game_id, 'P2');
+        } else {
+            alert("ΣΦΑΛΜΑ: " + d.error);
+            els.joinInput.value = '';
+        }
     };
+
+    function setupGame(gid, role) {
+        state.gameId = gid; state.role = role;
+        els.lobbyControls.style.display = 'none';
+        document.getElementById('display-game-id').textContent = gid;
+        document.getElementById('game-id-container').style.display = 'inline';
+        startLoop();
+    }
 
     function startLoop() {
         if(timer) clearInterval(timer);
         refresh();
-        timer = setInterval(refresh, 2000);
+        timer = setInterval(refresh, 1500); 
     }
 
     async function refresh() {
-        if(!state.gameId) return;
-        const d = await api(`API/game_status.php?game_id=${state.gameId}`);
-        if(d.status === 'success') render(d);
+        if(!state.gameId || gameEndedHandled) return;
+        const t = new Date().getTime();
+        const d = await api(`API/game_status.php?game_id=${state.gameId}&t=${t}`);
+        if(d && d.status === 'success') render(d);
     }
 
     function render(d) {
-        els.myHand.innerHTML = ''; 
-        els.enemyHand.innerHTML = ''; 
-        els.table.innerHTML = '';
-        els.p1Xeri.innerHTML = ''; els.p2Xeri.innerHTML = '';
+        // --- 1. ΕΛΕΓΧΟΣ ΤΕΛΟΥΣ ---
+        if (d.game_status === 'ended') {
+            if (gameEndedHandled) return;
+            gameEndedHandled = true;
+            
+            if (timer) clearInterval(timer);
+            timer = null;
 
-        els.statsP1.sc.textContent = d.scores.p1;
-        els.statsP1.xr.textContent = d.scores.p1_xeres;
-        els.statsP2.sc.textContent = d.scores.p2;
-        els.statsP2.xr.textContent = d.scores.p2_xeres;
+            // Ενημερώνουμε τα Σκορ για να τα βλέπεις σωστά πίσω από το Alert
+            // ΔΙΟΡΘΩΣΗ: Ποιος είμαι;
+            let myS = (state.role === 'P1') ? d.scores.p1 : d.scores.p2;
+            let enS = (state.role === 'P1') ? d.scores.p2 : d.scores.p1;
+            
+            // Το scP1 είναι το ΚΑΤΩ κουτί (Δικό μου)
+            els.scP1.textContent = myS || 0;
+            // Το scP2 είναι το ΠΑΝΩ κουτί (Αντίπαλος)
+            els.scP2.textContent = enS || 0;
 
-        const isMyTurn = (state.role==='P1' && d.turn===1) || (state.role==='P2' && d.turn===2);
-        els.statusMsg.style.color = isMyTurn ? '#4CAF50' : '#f44336';
-        els.statusMsg.textContent = isMyTurn ? "Η ΣΕΙΡΑ ΣΟΥ!" : `Σειρά Αντιπάλου`;
+            setTimeout(() => {
+                let myScore = parseInt(myS || 0);
+                let enScore = parseInt(enS || 0);
+                let msg = (myScore > enScore) ? "🎉 ΚΕΡΔΙΣΕΣ!" : (myScore < enScore ? "😢 ΕΧΑΣΕΣ..." : "🤝 ΙΣΟΠΑΛΙΑ");
 
-        // P1 HAND
-        d.p1_hand.forEach(c => {
-            if(state.role === 'P1') els.myHand.appendChild(mkCard(c.rank, c.suit, c.id, true)); 
-        });
-        
-        // P2 HAND
-        for(let i=0; i<d.p2_hand_count; i++) {
-            const c = document.createElement('div');
-            c.className = 'card';
-            c.style.backgroundImage = "url('cards/back.png')";
-            if(state.role === 'P1') els.enemyHand.appendChild(c);
-            else els.myHand.appendChild(mkCard('?', '?', 0, true)); 
+                alert(`${msg}\n\nΤΕΛΙΚΟ ΣΚΟΡ:\nΕσύ: ${myScore}\nΑντίπαλος: ${enScore}`);
+                window.location.reload();
+            }, 500);
+
+            return;
         }
 
-        d.table_cards.forEach(c => els.table.appendChild(mkCard(c.rank, c.suit, c.id, false)));
+        // --- 2. Waiting ---
+        if (d.game_status === 'waiting') {
+            els.waitingScreen.style.display = 'flex';
+            els.waitingId.textContent = state.gameId;
+            els.gameArea.style.display = 'none';
+            return; 
+        } else {
+            els.waitingScreen.style.display = 'none';
+            els.gameArea.style.display = 'flex';
+        }
 
-        updatePile(els.p1Pile, d.captured.p1);
-        updatePile(els.p2Pile, d.captured.p2);
-        d.xeres_cards.p1.forEach(c => els.p1Xeri.appendChild(mkXeri(c.rank, c.suit)));
-        d.xeres_cards.p2.forEach(c => els.p2Xeri.appendChild(mkXeri(c.rank, c.suit)));
+        // --- 3. Ζωγραφική ---
+        try {
+            const p1Hand = d.p1_hand || [];
+            const p2Hand = d.p2_hand || [];
+            const tableCards = d.table_cards || [];
+            
+            let myData, enemyData;
+            if (state.role === 'P1') {
+                myData = { hand: p1Hand, pile: d.captured.p1, xeres: d.xeres_cards.p1, score: d.scores.p1, xrCount: d.scores.p1_xeres };
+                enemyData = { hand: p2Hand, pile: d.captured.p2, xeres: d.xeres_cards.p2, score: d.scores.p2, xrCount: d.scores.p2_xeres };
+            } else {
+                myData = { hand: p2Hand, pile: d.captured.p2, xeres: d.xeres_cards.p2, score: d.scores.p2, xrCount: d.scores.p2_xeres };
+                enemyData = { hand: p1Hand, pile: d.captured.p1, xeres: d.xeres_cards.p1, score: d.scores.p1, xrCount: d.scores.p1_xeres };
+            }
+
+            myData.hand.sort((a, b) => getCardValue(b.rank) - getCardValue(a.rank));
+
+            const myHandStr = JSON.stringify(myData.hand);
+            if (myHandStr !== state.cache.hand) {
+                els.myHand.innerHTML = '';
+                myData.hand.forEach(c => els.myHand.appendChild(mkCard(c.rank, c.suit, c.id, true)));
+                state.cache.hand = myHandStr;
+            }
+
+            const enHandStr = JSON.stringify(enemyData.hand);
+            if (enHandStr !== state.cache.enemy) {
+                els.enemyHand.innerHTML = '';
+                enemyData.hand.forEach(c => {
+                    const b = document.createElement('div'); b.className = 'card'; b.style.backgroundImage = "url('cards/back.png')";
+                    els.enemyHand.appendChild(b);
+                });
+                state.cache.enemy = enHandStr;
+            }
+
+            const tableStr = JSON.stringify(tableCards);
+            if (tableStr !== state.cache.table) {
+                els.table.innerHTML = '';
+                tableCards.forEach((c, i) => {
+                    let el = mkCard(c.rank, c.suit, c.id, false);
+                    el.style.position = 'absolute';
+                    el.style.left = '50%'; el.style.top = '50%';
+                    el.style.marginLeft = '-35px'; el.style.marginTop = '-52.5px';
+                    el.style.transform = `rotate(${(i%5-2)*8}deg)`;
+                    el.style.zIndex = i;
+                    els.table.appendChild(el);
+                });
+                state.cache.table = tableStr;
+            }
+
+            if (myData.pile !== state.cache.pileP1) { updatePile(els.pileBottom, myData.pile); state.cache.pileP1 = myData.pile; }
+            if (enemyData.pile !== state.cache.pileP2) { updatePile(els.pileTop, enemyData.pile); state.cache.pileP2 = enemyData.pile; }
+            
+            els.xeriBottom.innerHTML = ''; d.xeres_cards[state.role.toLowerCase()].forEach(c => els.xeriBottom.appendChild(mkXeri(c.rank, c.suit)));
+            let enemyRole = state.role === 'P1' ? 'p2' : 'p1';
+            els.xeriTop.innerHTML = ''; d.xeres_cards[enemyRole].forEach(c => els.xeriTop.appendChild(mkXeri(c.rank, c.suit)));
+
+            // --- ΔΙΟΡΘΩΣΗ ΕΜΦΑΝΙΣΗΣ ΣΚΟΡ ---
+            // Το scP1 είναι το ΚΑΤΩ κουτί (δείχνει το ΔΙΚΟ ΜΟΥ σκορ)
+            els.scP1.textContent = myData.score || 0; 
+            els.xrP1.textContent = myData.xrCount || 0;
+
+            // Το scP2 είναι το ΠΑΝΩ κουτί (δείχνει του ΑΝΤΙΠΑΛΟΥ)
+            els.scP2.textContent = enemyData.score || 0; 
+            els.xrP2.textContent = enemyData.xrCount || 0;
+
+            if (state.cache.turn !== d.turn) {
+                const isMyTurn = (state.role==='P1' && d.turn===1) || (state.role==='P2' && d.turn===2);
+                els.statusMsg.style.display = "block";
+                if (isMyTurn) {
+                    els.statusMsg.innerHTML = "🟢 Η ΣΕΙΡΑ ΣΟΥ!";
+                    els.statusMsg.style.backgroundColor = "#ff9800"; els.statusMsg.style.color = "white"; els.statusMsg.style.border = "2px solid white";
+                } else {
+                    els.statusMsg.innerHTML = "⏳ ΣΕΙΡΑ ΑΝΤΙΠΑΛΟΥ...";
+                    els.statusMsg.style.backgroundColor = "#d32f2f"; els.statusMsg.style.color = "#ffcccc"; els.statusMsg.style.border = "2px solid #ffcccc";
+                }
+                state.cache.turn = d.turn;
+            }
+
+            if (d.last_action && d.last_action !== state.lastActionStr) {
+                state.lastActionStr = d.last_action;
+                let parts = d.last_action.split(':');
+                if (parts.length === 2 && (parts[0] === 'CAPTURE' || parts[0] === 'XERI')) {
+                    let cardCode = parts[1];
+                    let suit = cardCode.slice(-1);
+                    let rank = cardCode.slice(0, -1);
+                    let fname = `cards/${fn(rank)}_${fn(suit)}.png`;
+                    els.ghostCard.style.backgroundImage = `url('${fname}')`;
+                    els.ghostCard.className = 'ghost-capture'; 
+                    els.ghostCard.style.display = 'block';
+                    setTimeout(() => { els.ghostCard.style.display = 'none'; }, 1500);
+                } else {
+                    els.ghostCard.style.display = 'none';
+                }
+            }
+        } catch (e) { console.error("Error in render:", e); }
     }
 
     function updatePile(el, count) {
-        if(count > 0) { el.className = 'captured-pile has-cards'; el.innerHTML = ''; }
-        else { el.className = 'captured-pile'; el.innerHTML = ''; }
+        if(count > 0) { el.classList.add('has-cards'); el.innerHTML = ''; }
+        else { el.classList.remove('has-cards'); el.innerHTML = ''; }
     }
 
-    function mkCard(val, suit, cardId, click) {
-        const d = document.createElement('div');
-        d.className = 'card';
-        if(val !== '?') {
-            const fname = `cards/${fn(val)}_${fn(suit)}.png`;
-            d.style.backgroundImage = `url('${fname}')`;
-        }
-        if(click) {
-            d.classList.add('clickable');
-            d.onclick = () => doMove(cardId); 
-        }
+    function mkCard(val, suit, cid, click) {
+        const d = document.createElement('div'); d.className = 'card';
+        if(val && suit) d.style.backgroundImage = `url('cards/${fn(val)}_${fn(suit)}.png')`;
+        if(click) { d.classList.add('clickable'); d.onclick = () => doMove(cid); }
         return d;
     }
 
     function mkXeri(val, suit) {
-        const d = document.createElement('div');
-        d.className = 'xeri-card';
-        const fname = `cards/${fn(val)}_${fn(suit)}.png`;
-        d.style.backgroundImage = `url('${fname}')`;
+        const d = document.createElement('div'); d.className = 'xeri-card';
+        if(val && suit) d.style.backgroundImage = `url('cards/${fn(val)}_${fn(suit)}.png')`;
         return d;
     }
 
     function fn(v) {
-        if(v==='A') return 'ace'; if(v==='K') return 'king';
-        if(v==='Q') return 'queen'; if(v==='J') return 'jack';
-        if(v==='♣' || v==='C') return 'of_clubs'; 
-        if(v==='♦' || v==='D') return 'of_diamonds'; 
-        if(v==='♥' || v==='H') return 'of_hearts'; 
-        if(v==='♠' || v==='S') return 'of_spades'; 
-        return v; 
+        if(!v) return '';
+        if(v==='A') return 'ace'; if(v==='K') return 'king'; if(v==='Q') return 'queen'; if(v==='J') return 'jack';
+        if(v==='♣'||v==='C') return 'of_clubs'; if(v==='♦'||v==='D') return 'of_diamonds';
+        if(v==='♥'||v==='H') return 'of_hearts'; if(v==='♠'||v==='S') return 'of_spades';
+        return v;
     }
 
-    async function doMove(cardId) {
-        if(els.statusMsg.textContent.includes('Αντιπάλου')) return alert('Περίμενε!');
-        const d = await api('API/play_card.php', 'POST', {
-            game_id: state.gameId, 
-            card_id: cardId 
-        });
+    async function doMove(cid) {
+        if(els.statusMsg.innerHTML.includes('ΑΝΤΙΠΑΛΟΥ')) return;
+        const d = await api('API/play_card.php', 'POST', {game_id: state.gameId, card_id: cid});
         if(d.status === 'success') refresh();
-        else alert(d.error);
     }
+    document.getElementById('btn-logout').onclick = () => location.reload();
 });

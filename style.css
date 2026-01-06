@@ -1,47 +1,115 @@
-body {
-    background-color: #2e7d32;
-    font-family: 'Segoe UI', sans-serif;
-    color: white;
-    text-align: center;
-    margin: 0;
+/* --- style.css --- */
+
+* { box-sizing: border-box; }
+
+html, body {
+    height: 100%; width: 100%; overflow: hidden;
+    background-color: #2e7d32; font-family: 'Segoe UI', sans-serif;
+    color: white; text-align: center; margin: 0; padding: 0;
 }
-.game-container { max-width: 900px; margin: 0 auto; padding: 10px; }
-.panel, .header { background: rgba(0,0,0,0.5); padding: 15px; border-radius: 10px; margin-bottom: 20px; }
-.action-btn { background: #ff9800; color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
-input { padding: 8px; border-radius: 4px; border: none; text-align: center; }
 
-.player-area { position: relative; margin: 10px 0; min-height: 140px; }
-.relative { position: relative; }
-.hand { display: flex; justify-content: center; gap: 5px; min-height: 110px; }
+.game-container {
+    width: 100%; height: 100vh;
+    margin: 0; display: flex; flex-direction: column; position: relative;
+}
 
-.table-area { 
-    background: rgba(255,255,255,0.1); border-radius: 50%; 
-    width: 150px; height: 150px; margin: 10px auto; 
-    display: flex; justify-content: center; align-items: center; 
-    border: 4px solid rgba(255,255,255,0.2); 
+.panel {
+    background: rgba(0,0,0,0.6); padding: 20px; border-radius: 10px;
+    max-width: 400px; margin: 20px auto;
+}
+
+.action-btn { 
+    background: #ff9800; color: white; border: none; 
+    padding: 12px 24px; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 16px; 
+}
+input { padding: 10px; border-radius: 4px; border: none; text-align: center; font-size: 16px; }
+
+.header-info {
+    height: 40px; background: #1b4d1f; display: flex; justify-content: space-between; align-items: center;
+    padding: 0 20px; font-size: 0.9em; border-bottom: 1px solid rgba(255,255,255,0.2); flex-shrink: 0;
+}
+
+#game-area {
+    flex: 1; display: flex; flex-direction: column; justify-content: space-between; padding: 10px 0; width: 100%; overflow: hidden;
+}
+
+.player-area { position: relative; width: 100%; height: 150px; flex-shrink: 0; }
+
+.table-area {
+    position: relative; width: 200px; height: 200px; margin: 0 auto; border-radius: 50%;
+    border: 5px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.1);
+}
+
+/* --- ΚΑΡΤΑ ΦΑΝΤΑΣΜΑ (ΜΟΝΟ ΓΙΑ ΜΠΑΖΕΣ) --- */
+#ghost-card {
+    display: none;
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%);
+    background-size: 100% 100%;
+    z-index: 5000;
+    pointer-events: none;
+}
+
+/* ΤΟ ΤΟΥΜΠΑΝΟ ΕΦΕ (Μεγάλο, Χρυσό, Αργό) */
+.ghost-capture {
+    width: 140px; height: 210px; /* Τεράστιο */
+    box-shadow: 0 0 50px gold;   /* Χρυσή Λάμψη */
+    animation: boomEffect 1.5s forwards;
+}
+
+@keyframes boomEffect {
+    0%   { transform: translate(-50%, -50%) scale(0.5); opacity: 0; }
+    20%  { transform: translate(-50%, -50%) scale(1.2); opacity: 1; }
+    80%  { transform: translate(-50%, -50%) scale(1.0); opacity: 1; }
+    100% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
+}
+
+/* --- ΛΟΙΠΑ ΣΤΟΙΧΕΙΑ --- */
+#status-message {
+    display: none; position: absolute; bottom: 170px; left: 50%; transform: translateX(-50%);
+    z-index: 100; background: #ff9800; color: white; 
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3); padding: 8px 20px; border-radius: 20px;
+    font-weight: bold; font-size: 1em; pointer-events: none; white-space: nowrap;
 }
 
 .card {
-    width: 65px; height: 95px;
-    background-size: contain; background-repeat: no-repeat;
-    background-position: center;
-    border-radius: 5px;
-    background-color: transparent;
-    box-shadow: 2px 2px 5px rgba(0,0,0,0.5);
+    width: 70px; height: 105px; background-size: 100% 100%; background-repeat: no-repeat; background-position: center;
+    border-radius: 6px; box-shadow: 2px 2px 6px rgba(0,0,0,0.4);
+    position: relative; transition: transform 0.2s ease-out; transform-style: preserve-3d;
 }
-.card.clickable:hover { transform: translateY(-10px); cursor: pointer; }
+.card.clickable { cursor: pointer; }
+.card.clickable:hover { transform: translateY(-20px); z-index: 3000; }
+.card.clickable::after {
+    content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 140px; background: transparent; z-index: -1;
+}
 
-/* Piles & Xeres */
-.captured-pile { position: absolute; width: 65px; height: 95px; border: 2px dashed rgba(255,255,255,0.3); border-radius: 5px; }
-.has-cards { border: none; background-image: url('cards/back.png'); box-shadow: 3px 3px 0 #333; }
+.hand {
+    position: absolute; width: 100%; height: 110px; display: flex; justify-content: center; gap: -15px; z-index: 2000; 
+}
+.player-area:first-child .hand { top: 0; align-items: flex-start; }
+.player-area:last-child .hand { bottom: 10px; align-items: flex-end; }
+
+.captured-pile {
+    position: absolute; width: 60px; height: 90px; border: 2px dashed rgba(255,255,255,0.3); border-radius: 5px;
+}
+.has-cards { border: none; background-image: url('cards/back.png'); background-size: 100% 100%; }
 .xeri-list { position: absolute; display: flex; gap: 5px; }
-.xeri-card { width: 45px; height: 65px; background-size: contain; background-repeat: no-repeat; border: 2px solid gold; border-radius: 4px; background-color: white; transform: rotate(10deg); }
+.xeri-card { width: 40px; height: 60px; background-size: 100% 100%; border: 2px solid gold; border-radius: 4px; background-color: white; }
 
-.my-pos { bottom: 10px; left: 20px; }
-.enemy-pos { top: 10px; left: 20px; }
-.xeri-list.my-pos { left: 100px; bottom: 10px; }
-.xeri-list.enemy-pos { left: 100px; top: 10px; }
+.enemy-pos { top: 120px; left: 10px; }
+.xeri-list.enemy-pos { top: 120px; left: 80px; max-width: 200px; flex-wrap: wrap; }
+.my-pos { bottom: 120px; left: 10px; }
+.xeri-list.my-pos { bottom: 120px; left: 80px; max-width: 200px; flex-wrap: wrap; }
 
-.stats-box { position: absolute; right: 20px; background: rgba(0,0,0,0.7); color: gold; padding: 5px 10px; border-radius: 5px; font-weight: bold; font-size: 0.9em; }
-.my-stats { bottom: 10px; }
+.stats-box {
+    position: absolute; right: 10px; font-weight: bold; font-size: 13px; color: gold;
+    background: rgba(0,0,0,0.6); padding: 5px 10px; border-radius: 10px; z-index: 30;
+}
 .enemy-stats { top: 10px; }
+.my-stats { bottom: 10px; }
+
+#waiting-screen {
+    position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.9); z-index: 999;
+    display: none; flex-direction: column; align-items: center; justify-content: center; color: white;
+}

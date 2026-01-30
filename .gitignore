@@ -1,10 +1,9 @@
 
-API/DB.php
+db.php
+db.php.txt
 
-logs/PHP_errors.log
 
-htaccess.txt
 .htaccess
+htaccess.txt
 
-.DS_Store
-Thumbs.db
+

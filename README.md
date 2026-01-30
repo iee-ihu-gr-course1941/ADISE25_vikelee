@@ -36,7 +36,7 @@ Database: MySQL / MariaDB.
 Δημιουργήστε μια βάση δεδομένων με όνομα xeri_db.
 
 Εκτελέστε το παρακάτω SQL script για να δημιουργήσετε τους πίνακες:
-
+```
 SQL
 CREATE TABLE games (
     id INT(11) NOT NULL AUTO_INCREMENT,
@@ -71,6 +71,8 @@ CREATE TABLE players (
     token VARCHAR(64) NOT NULL,
     PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
 
 3. Ρύθμιση Σύνδεσης (db.php)
 Ανοίξτε το αρχείο API/db.php (ή db.php) και επεξεργαστείτε τα στοιχεία σύνδεσης ώστε να ταιριάζουν με το δικό σας σύστημα:

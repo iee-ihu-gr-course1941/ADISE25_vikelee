@@ -5,6 +5,7 @@ $user = 'iee2021066';
 $pass = 'Kelemao1!';
 $port = '3307'; 
 $charset = 'utf8mb4';
+$socketPath = '/home/student/iee/2021/iee2021066/mysql/run/mysql.sock' ;
 
 
 

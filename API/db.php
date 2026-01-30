@@ -1,5 +1,5 @@
 <?php
-$host = 'users.iee.ihu.gr';
+$host = 'localhost';
 $db   = 'xeri_db';
 $user = 'iee2021066';
 $pass = 'Kelemao1!';

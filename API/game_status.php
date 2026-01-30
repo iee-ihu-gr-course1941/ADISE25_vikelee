@@ -1,5 +1,5 @@
 <?php
-// Κλείνουμε τυχόν output buffers για να μην χαλάσει το JSON
+
 while (ob_get_level()) ob_end_clean();
 header('Content-Type: application/json');
 
@@ -8,7 +8,6 @@ require 'db.php';
 $gid = $_GET['game_id'] ?? null;
 if (!$gid) { echo json_encode(['status'=>'error', 'message'=>'No ID']); exit; }
 
-// Χρησιμοποιούμε απλό SELECT (χωρίς κλείδωμα) για ταχύτητα
 $game = $pdo->query("SELECT * FROM games WHERE id=$gid")->fetch(PDO::FETCH_ASSOC);
 if (!$game) { echo json_encode(['status'=>'error', 'message'=>'Game not found']); exit; }
 
@@ -32,7 +31,7 @@ foreach ($cards as $c) {
     }
 }
 
-// Ταξινόμηση τραπεζιού
+
 usort($table, function($a, $b) { return $a['pile_order'] - $b['pile_order']; });
 
 $response = [
@@ -41,15 +40,14 @@ $response = [
     'turn' => (int)$game['turn_player'],
     'last_action' => $game['last_action'],
     
-    // Arrays (ποτέ null)
+   
     'p1_hand' => $p1_hand,
     'p2_hand' => $p2_hand,
     'table_cards' => $table,
     
     'captured' => ['p1' => $p1_pile, 'p2' => $p2_pile],
     'xeres_cards' => ['p1' => $p1_xeres, 'p2' => $p2_xeres],
-    
-    // Σκορ (Force integers)
+  
     'scores' => [
         'p1' => (int)$game['p1_score'],
         'p2' => (int)$game['p2_score'],

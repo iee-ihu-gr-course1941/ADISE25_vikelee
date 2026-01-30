@@ -7,8 +7,7 @@ document.addEventListener("DOMContentLoaded", () => {
     let timer = null;
     let gameEndedHandled = false;
 
-    // Στοιχεία HTML
-    // ΠΡΟΣΟΧΗ: scP1 είναι το ΚΑΤΩ κουτί (Εγώ), scP2 είναι το ΠΑΝΩ κουτί (Αντίπαλος)
+    //  HTML
     const els = {
         loginScreen: document.getElementById('login-screen'),
         gameDash: document.getElementById('game-dashboard'),
@@ -101,7 +100,7 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     function render(d) {
-        // --- 1. ΕΛΕΓΧΟΣ ΤΕΛΟΥΣ ---
+    
         if (d.game_status === 'ended') {
             if (gameEndedHandled) return;
             gameEndedHandled = true;
@@ -109,14 +108,15 @@ document.addEventListener("DOMContentLoaded", () => {
             if (timer) clearInterval(timer);
             timer = null;
 
-            // Ενημερώνουμε τα Σκορ για να τα βλέπεις σωστά πίσω από το Alert
-            // ΔΙΟΡΘΩΣΗ: Ποιος είμαι;
+            
             let myS = (state.role === 'P1') ? d.scores.p1 : d.scores.p2;
             let enS = (state.role === 'P1') ? d.scores.p2 : d.scores.p1;
             
-            // Το scP1 είναι το ΚΑΤΩ κουτί (Δικό μου)
+           
+
             els.scP1.textContent = myS || 0;
-            // Το scP2 είναι το ΠΑΝΩ κουτί (Αντίπαλος)
+           
+
             els.scP2.textContent = enS || 0;
 
             setTimeout(() => {
@@ -131,7 +131,6 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
 
-        // --- 2. Waiting ---
         if (d.game_status === 'waiting') {
             els.waitingScreen.style.display = 'flex';
             els.waitingId.textContent = state.gameId;
@@ -142,7 +141,7 @@ document.addEventListener("DOMContentLoaded", () => {
             els.gameArea.style.display = 'flex';
         }
 
-        // --- 3. Ζωγραφική ---
+       
         try {
             const p1Hand = d.p1_hand || [];
             const p2Hand = d.p2_hand || [];
@@ -198,12 +197,11 @@ document.addEventListener("DOMContentLoaded", () => {
             let enemyRole = state.role === 'P1' ? 'p2' : 'p1';
             els.xeriTop.innerHTML = ''; d.xeres_cards[enemyRole].forEach(c => els.xeriTop.appendChild(mkXeri(c.rank, c.suit)));
 
-            // --- ΔΙΟΡΘΩΣΗ ΕΜΦΑΝΙΣΗΣ ΣΚΟΡ ---
-            // Το scP1 είναι το ΚΑΤΩ κουτί (δείχνει το ΔΙΚΟ ΜΟΥ σκορ)
+          
             els.scP1.textContent = myData.score || 0; 
             els.xrP1.textContent = myData.xrCount || 0;
 
-            // Το scP2 είναι το ΠΑΝΩ κουτί (δείχνει του ΑΝΤΙΠΑΛΟΥ)
+            
             els.scP2.textContent = enemyData.score || 0; 
             els.xrP2.textContent = enemyData.xrCount || 0;
 

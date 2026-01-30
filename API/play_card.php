@@ -22,13 +22,13 @@ try {
     $score_col = ($turn == 1) ? 'p1_score' : 'p2_score';
     $xeri_col = ($turn == 1) ? 'p1_xeres' : 'p2_xeres';
 
-    // Βρίσκουμε την κάρτα που παίζεται
+ 
     $stmt = $pdo->prepare("SELECT * FROM game_cards WHERE id=? AND game_id=? AND location=?");
     $stmt->execute([$cid, $gid, $hand_col]);
     $card = $stmt->fetch();
     if (!$card) throw new Exception("Card not found");
 
-    // Βρίσκουμε τι υπάρχει στο τραπέζι
+   
     $table_cards = $pdo->query("SELECT * FROM game_cards WHERE game_id=$gid AND location='table' ORDER BY pile_order ASC")->fetchAll();
     $top_card = end($table_cards);
 
@@ -36,7 +36,7 @@ try {
     $is_xeri = false;
     $points = 0;
     
-    // --- ΛΟΓΙΚΗ ΜΑΖΕΜΑΤΟΣ ---
+   
     if ($top_card) {
         if ($card['rank'] === $top_card['rank'] || $card['rank'] === 'J') {
             $collected = true;
@@ -46,7 +46,7 @@ try {
         }
     }
 
-    // --- ΕΚΤΕΛΕΣΗ ΚΙΝΗΣΗΣ ---
+    
     if ($collected) {
         $ids_to_collect = [$cid];
         foreach ($table_cards as $tc) {
@@ -80,35 +80,31 @@ try {
         $pdo->prepare("UPDATE games SET last_action=? WHERE id=?")->execute([$action_msg, $gid]);
     }
 
-    // --- ΑΛΛΑΓΗ ΣΕΙΡΑΣ ---
     $next_turn = ($turn == 1) ? 2 : 1;
     $pdo->prepare("UPDATE games SET turn_player=? WHERE id=?")->execute([$next_turn, $gid]);
 
-    // --- ΝΕΟ: ΕΛΕΓΧΟΣ ΓΙΑ ΞΑΝΑ-ΜΟΙΡΑΣΜΑ (RE-DEAL) ---
-    // Μετράμε πόσα φύλλα έχουν μείνει στα χέρια των παικτών
+   
     $cards_in_hands = $pdo->query("SELECT count(*) FROM game_cards WHERE game_id=$gid AND location IN ('p1_hand', 'p2_hand')")->fetchColumn();
 
-    // Αν τα χέρια άδειασαν (είναι 0), πρέπει να μοιράσουμε από την τράπουλα (αν έχει φύλλα)
+   
     if ($cards_in_hands == 0) {
-        // Παίρνουμε τα επόμενα 12 φύλλα από την τράπουλα
+        
         $deck_cards = $pdo->query("SELECT id FROM game_cards WHERE game_id=$gid AND location='deck' ORDER BY pile_order ASC LIMIT 12")->fetchAll(PDO::FETCH_COLUMN);
 
         if ($deck_cards) {
             foreach ($deck_cards as $index => $card_id) {
-                // Τα πρώτα 6 στον P1, τα επόμενα 6 στον P2
+              
                 $new_loc = ($index < 6) ? 'p1_hand' : 'p2_hand';
                 $pdo->prepare("UPDATE game_cards SET location=? WHERE id=?")->execute([$new_loc, $card_id]);
             }
         }
     }
 
-    // --- ΕΛΕΓΧΟΣ ΤΕΛΟΥΣ ΠΑΙΧΝΙΔΙΟΥ ---
-    // Το παιχνίδι τελειώνει όταν δεν υπάρχουν φύλλα ούτε στην τράπουλα, ούτε στα χέρια
+    
     $remaining = $pdo->query("SELECT count(*) FROM game_cards WHERE location IN ('deck','p1_hand','p2_hand') AND game_id=$gid")->fetchColumn();
     
     if ($remaining == 0) {
-        // ΤΕΛΕΥΤΑΙΟ ΜΑΖΕΜΑ: Όποιος έκανε την τελευταία μπάζα, παίρνει ό,τι έμεινε κάτω
-        // (Αυτή είναι μια λεπτομέρεια της Ξερής, αν θες την ενεργοποιούμε. Προς το παρόν απλά τελειώνει).
+       
         $pdo->query("UPDATE games SET status='ended' WHERE id=$gid");
     }
 

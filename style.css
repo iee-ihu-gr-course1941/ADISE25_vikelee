@@ -1,4 +1,4 @@
-/* --- style.css --- */
+/* css file*/
 
 * { box-sizing: border-box; }
 
@@ -40,7 +40,7 @@ input { padding: 10px; border-radius: 4px; border: none; text-align: center; fon
     border: 5px solid rgba(255,255,255,0.15); background: rgba(0,0,0,0.1);
 }
 
-/* --- ΚΑΡΤΑ ΦΑΝΤΑΣΜΑ (ΜΟΝΟ ΓΙΑ ΜΠΑΖΕΣ) --- */
+
 #ghost-card {
     display: none;
     position: absolute;
@@ -51,7 +51,7 @@ input { padding: 10px; border-radius: 4px; border: none; text-align: center; fon
     pointer-events: none;
 }
 
-/* ΤΟ ΤΟΥΜΠΑΝΟ ΕΦΕ (Μεγάλο, Χρυσό, Αργό) */
+/* ΕΦΕ*/
 .ghost-capture {
     width: 140px; height: 210px; /* Τεράστιο */
     box-shadow: 0 0 50px gold;   /* Χρυσή Λάμψη */
@@ -65,7 +65,7 @@ input { padding: 10px; border-radius: 4px; border: none; text-align: center; fon
     100% { transform: translate(-50%, -50%) scale(0.8); opacity: 0; }
 }
 
-/* --- ΛΟΙΠΑ ΣΤΟΙΧΕΙΑ --- */
+
 #status-message {
     display: none; position: absolute; bottom: 170px; left: 50%; transform: translateX(-50%);
     z-index: 100; background: #ff9800; color: white; 

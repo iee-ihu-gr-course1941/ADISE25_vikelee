@@ -79,8 +79,8 @@ CREATE TABLE players (
 ```
 $host = 'localhost';
 $db   = 'xeri_db';
-$user = 'ΑΜ';        
-$pass = 'Κωδικος';            
+$user = 'iee2021066';        
+$pass = 'Kelemao1!';            
 $port = '3307';
 ```    
 
